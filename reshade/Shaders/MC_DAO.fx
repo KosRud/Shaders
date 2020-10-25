@@ -26,15 +26,9 @@
 
 uniform float Strength < __UNIFORM_DRAG_FLOAT1
 	ui_min = 0.0; ui_max = 8.0; ui_step = 0.1;
-	ui_tooltip = "Strength of the effect (recommended 0.3)";
+	ui_tooltip = "Strength of the effect (recommended 0.6)";
 	ui_label = "Strength";
-> = 0.6;
-
-uniform int NumRays < __UNIFORM_SLIDER_INT1
-	ui_min = 1; ui_max = 16;
-	ui_tooltip = "Number of rays (recommended 4)";
-	ui_label = "Number of rays in a disk";
-> = 4;
+> = 1.0;
 
 uniform int SampleDistance < __UNIFORM_SLIDER_INT1
 	ui_min = 1; ui_max = 64;
@@ -44,21 +38,21 @@ uniform int SampleDistance < __UNIFORM_SLIDER_INT1
 
 uniform int NumSamples < __UNIFORM_SLIDER_INT1
 	ui_min = 1; ui_max = 32;
-	ui_tooltip = "Number of samples per ray (recommended 4)";
-	ui_label = "Samples per ray";
-> = 4;
+	ui_tooltip = "Number of samples (higher numbers give better quality at the cost of performance)\nrecommended: 8";
+	ui_label = "Number of samples";
+> = 8;
 
 uniform float StartFade < __UNIFORM_DRAG_FLOAT1
-	ui_min = 0.0; ui_max = 16.0; ui_step = 0.1;
-	ui_tooltip = "AO starts fading when Z difference is greater than this\nmust be bigger than \"Z difference end fade\"\nrecommended: 2.0";
+	ui_min = 0.0; ui_max = 3.0; ui_step = 0.1;
+	ui_tooltip = "AO starts fading when Z difference is greater than this\nmust be bigger than \"Z difference end fade\"\nrecommended: 0.5";
 	ui_label = "Z difference start fade";
-> = 2.0;
+> = 0.5;
 
 uniform float EndFade < __UNIFORM_DRAG_FLOAT1
-	ui_min = 0.0; ui_max = 16.0; ui_step = 0.1;
-	ui_tooltip = "AO completely fades when Z difference is greater than this\nmust be bigger than \"Z difference start fade\"\nrecommended: 6.0";
+	ui_min = 0.0; ui_max = 3.0; ui_step = 0.1;
+	ui_tooltip = "AO completely fades when Z difference is greater than this\nmust be bigger than \"Z difference start fade\"\nrecommended: 0.6";
 	ui_label = "Z difference end fade";
-> = 6.0;
+> = 0.6;
 
 uniform float NormalBias < __UNIFORM_DRAG_FLOAT1
 	ui_min = 0.0; ui_max = 1.0; ui_step = 0.025;
@@ -84,13 +78,6 @@ uniform float BlurQuality < __UNIFORM_DRAG_FLOAT1
 		ui_tooltip = "Blur quality (recommended 0.6)";
 > = 0.6;
 
-uniform int Mode <
-        ui_type = "combo";
-		ui_label = "Flicker fix";
-        ui_tooltip = "Cloose which one you like better\nMode A might have some flickering\nRecommended mode A";
-        ui_items = "Mode A\0Mode B\0";
-> = 0;
-
 uniform float Gamma < __UNIFORM_DRAG_FLOAT1
 		ui_min = 1.0; ui_max = 4.0; ui_step = 0.1;
 		ui_label = "Gamma";
@@ -100,8 +87,8 @@ uniform float Gamma < __UNIFORM_DRAG_FLOAT1
 uniform float NormalPower < __UNIFORM_DRAG_FLOAT1
 		ui_min = 0.5; ui_max = 8.0; ui_step = 0.1;
 		ui_label = "Normal power";
-        ui_tooltip = "Acts like softer version of normal bias without a threshold\nrecommended: 2";
-> = 2.0;
+        ui_tooltip = "Acts like softer version of normal bias without a threshold\nrecommended: 1";
+> = 1.0;
 
 uniform int FOV < __UNIFORM_DRAG_FLOAT1
 		ui_min = 40; ui_max = 180; ui_step = 1.0;
@@ -112,15 +99,8 @@ uniform int FOV < __UNIFORM_DRAG_FLOAT1
 uniform float DepthShrink < __UNIFORM_DRAG_FLOAT1
 		ui_min = 0.0; ui_max = 1.0; ui_step = 0.05;
 		ui_label = "Depth shrink";
-        ui_tooltip = "Higher values cause AO to become finer on distant objects\nrecommended: 0.3";
-> = 0.3;
-
-uniform int DepthAffectsRadius <
-		ui_type = "combo";
-		ui_label = "Depth affects radius";
-        ui_tooltip = "Far away objects have finer AO\nrecommended: yes";
-		ui_items = "No\0Yes\0";
-> = 1;
+        ui_tooltip = "Higher values cause AO to become finer on distant objects\nrecommended: 0.65";
+> = 0.65;
 
 #include "ReShade.fxh"
 
@@ -251,68 +231,62 @@ float3 BlurAOVerticalPass(float4 vpos : SV_Position, float2 texcoord : TexCoord)
 	return  color;
 }
 
+float2 ensure_1px_offset(float2 ray)
+{
+	float2 ray_in_pixels = ray / BUFFER_PIXEL_SIZE;
+	float coef = max(abs(ray_in_pixels.x), abs(ray_in_pixels.y));
+	if (coef < 1.0)
+	{
+		ray /= coef;
+	}
+	return ray;
+}
+
 float3 MadCakeDiskAOPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) : SV_Target
 {
 	float3 color = tex2D(ReShade::BackBuffer, texcoord).rgb;
 	float3 position = GetPosition(texcoord);
 	float3 normal = GetNormalFromDepth(texcoord);
 	
-	int num_rays = clamp(NumRays, 1, 16);
 	int num_samples = clamp(NumSamples, 1, 64);
 	int sample_dist = clamp(SampleDistance, 1, 128);
-	float start_fade = clamp(StartFade, 0.0, 16.0);
-	float end_fade = clamp(EndFade, 0.0, 16.0);
+	float start_fade = clamp(StartFade, 0.0, 3.0);
+	float end_fade = clamp(EndFade, 0.0, 3.0);
 	float normal_bias = clamp(NormalBias, 0.0, 1.0);
 	
 	float occlusion = 0;
 	float fade_range = end_fade - start_fade;
 	
-	float angle_jitter = rand2D(texcoord);
-	float radius_jitter = rand2D(texcoord + float2(1,1));
-	
-	float shrink = 1.0 + log(position.z * pow(DepthShrink,2.2) + 1.0);
+	float angle_jitter_minor = rand2D(texcoord);
+	float angle_jitter_major = rand2D(texcoord + float2(-1, 0)) * 3.1415 * 2.0 * 0;
 
 	[loop]
-	for (int i = 0; i < num_rays; i++)
+	for (int i = 0; i < num_samples; i++)
 	{
-		float angle = 3.1415 * 2.0 / num_rays * (i + angle_jitter);
+		float angle = 3.1415 * 2.0 / num_samples * (i + angle_jitter_minor) + angle_jitter_major;
 		float2 ray;
 		ray.x = sin(angle);
 		ray.y = cos(angle);
 		ray *= BUFFER_PIXEL_SIZE * sample_dist;
-		int depthAffectsRadius = clamp(DepthAffectsRadius, 0, 1);
-		if (depthAffectsRadius)
+		ray /= 1.0 + position.z * lerp(0, 0.05, pow(DepthShrink,4));
+		float radius_coef = 1.0;
+		float radius_jitter = rand2D(texcoord + float2(i, 1));
+		radius_coef = max((i + radius_jitter) / num_samples, 0.001);
+		ray *= radius_coef;
+		ray = ensure_1px_offset(ray);
+		float2 sample_coord = texcoord + ray;
+		float3 sampled_position = GetPosition(sample_coord);
+		float3 v = sampled_position - position;
+		float ray_occlusion = dot(normal, normalize(v));
+		ray_occlusion = pow (ray_occlusion, NormalPower);
+		ray_occlusion = (ray_occlusion - normal_bias) / (1.0 - normal_bias);
+		ray_occlusion = max(0.0, ray_occlusion);
+		float zdiff = abs(v.z);
+		if (zdiff >= start_fade)
 		{
-			ray = ray / shrink;
+			ray_occlusion *= saturate(1.0 - (zdiff - start_fade) / fade_range);
 		}
-		float ray_occlusion = 0.0;
-		[loop]
-		for (int k = 0; k < num_samples; k++)
-		{
-			float radius_coef = (float(k) + radius_jitter + 1.0) / num_samples;
-			float2 sample_coord = texcoord + ray * radius_coef;
-			float3 sampled_position = GetPosition(sample_coord);
-			float3 v = sampled_position - position;
-			float cur_occlusion = dot(normal, normalize(v));
-			cur_occlusion = max(0.0, cur_occlusion);
-			cur_occlusion = pow (cur_occlusion, NormalPower);
-			cur_occlusion = (cur_occlusion - normal_bias) / (1.0 - normal_bias);
-			float zdiff = abs(v.z);
-			if (zdiff >= start_fade)
-			{
-				cur_occlusion *= saturate(1.0 - (zdiff - start_fade) / fade_range);
-			}
-			if (Mode)
-			{
-				ray_occlusion += max(0.0,cur_occlusion) / num_samples;
-			}
-			else
-			{
-				ray_occlusion = max(ray_occlusion, cur_occlusion);
-			}
-			
-		}
-		occlusion += ray_occlusion / num_rays;
+		occlusion += ray_occlusion / num_samples;
 	}
 	occlusion = max(0.0, 1.0 - occlusion * Strength);
 	return occlusion;
