@@ -244,7 +244,6 @@ float2 ensure_1px_offset(float2 ray)
 
 float3 MadCakeDiskAOPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) : SV_Target
 {
-	float3 color = tex2D(ReShade::BackBuffer, texcoord).rgb;
 	float3 position = GetPosition(texcoord);
 	float3 normal = GetNormalFromDepth(texcoord);
 	
