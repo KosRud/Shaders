@@ -87,8 +87,8 @@ uniform float Gamma < __UNIFORM_DRAG_FLOAT1
 uniform float NormalPower < __UNIFORM_DRAG_FLOAT1
 		ui_min = 0.5; ui_max = 8.0; ui_step = 0.1;
 		ui_label = "Normal power";
-        ui_tooltip = "Acts like softer version of normal bias without a threshold\nrecommended: 1";
-> = 1.0;
+        ui_tooltip = "Acts like softer version of normal bias without a threshold\nrecommended: 1.4";
+> = 1.4;
 
 uniform int FOV < __UNIFORM_DRAG_FLOAT1
 		ui_min = 40; ui_max = 180; ui_step = 1.0;
