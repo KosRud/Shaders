@@ -40,7 +40,7 @@ uniform float BlackLevel < __UNIFORM_DRAG_FLOAT1
 	ui_min = 0.0; ui_max = 1.0; ui_step = 0.0025;
 	ui_tooltip = "Subtract this value from final result to compensate for monitor's diffuse reflection";
 	ui_label = "Black Level";
-> = 0.00001;
+> = 0.0;
 
 uniform bool DeGamma <
 	ui_label = "DeGamma";
@@ -78,12 +78,12 @@ float3 MadCakeToneMapPass(float4 vpos : SV_Position, float2 texcoord : TexCoord)
 	color.g = color.g * (r_fix + 1.0) / (color.g + r_fix);
 	color.b = color.b * (r_fix + 1.0) / (color.b + r_fix);
 	
+	color.rgb = color.rgb - BlackLevel;
+	
 	if (DeGamma)
 	{
 		color.rgb = pow(color.rgb, 2.2);
 	}
-	
-	color.rgb = color.rgb - BlackLevel;
 
 	return color;
 }
