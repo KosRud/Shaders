@@ -61,6 +61,7 @@ float3 MadCakeToneMapPass(float4 vpos : SV_Position, float2 texcoord : TexCoord)
 	
 	if (DeGamma)
 	{
+		color.rgb = max(color.rgb, 0); // suppress warning
 		color.rgb = pow(color.rgb, 0.45454545);
 	}
 	
@@ -70,6 +71,7 @@ float3 MadCakeToneMapPass(float4 vpos : SV_Position, float2 texcoord : TexCoord)
 	float a_mid = pow(0.5, Contrast - (Contrast - 1.0) * 0.5);
 	float r_fix = - (a_mid * r) / (-1.0 + a_mid - r + 2 * a_mid * r);
 	
+	color.rgb = max(color.rgb, 0); // suppress warning	
 	color.r = pow(color.r, Contrast - (Contrast - 1.0) * color.r);
 	color.g = pow(color.g, Contrast - (Contrast - 1.0) * color.g);
 	color.b = pow(color.b, Contrast - (Contrast - 1.0) * color.b);
@@ -82,6 +84,7 @@ float3 MadCakeToneMapPass(float4 vpos : SV_Position, float2 texcoord : TexCoord)
 	
 	if (DeGamma)
 	{
+		color.rgb = max(color.rgb, 0); // suppress warning
 		color.rgb = pow(color.rgb, 2.2);
 	}
 
