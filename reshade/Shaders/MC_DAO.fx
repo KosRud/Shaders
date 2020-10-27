@@ -42,14 +42,20 @@ uniform int NumSamples < __UNIFORM_SLIDER_INT1
 	ui_label = "Number of samples";
 > = 8;
 
+uniform float ReduceRadiusJitter < __UNIFORM_SLIDER_INT1
+	ui_min = 0; ui_max = 1; ui_step = 0.1;
+	ui_tooltip = "Less accurate AO, but also less noisy.\nrecommended: 0.2";
+	ui_label = "Limit radius jitter";
+> = 0.2;
+
 uniform float StartFade < __UNIFORM_DRAG_FLOAT1
-	ui_min = 0.0; ui_max = 3.0; ui_step = 0.1;
-	ui_tooltip = "AO starts fading when Z difference is greater than this\nmust be bigger than \"Z difference end fade\"\nrecommended: 0.5";
+	ui_min = 0.0; ui_max = 300.0; ui_step = 0.1;
+	ui_tooltip = "AO starts fading when Z difference is greater than this\nmust be bigger than \"Z difference end fade\"\nrecommended: 0.4";
 	ui_label = "Z difference start fade";
-> = 0.5;
+> = 0.4;
 
 uniform float EndFade < __UNIFORM_DRAG_FLOAT1
-	ui_min = 0.0; ui_max = 3.0; ui_step = 0.1;
+	ui_min = 0.0; ui_max = 300.0; ui_step = 0.1;
 	ui_tooltip = "AO completely fades when Z difference is greater than this\nmust be bigger than \"Z difference start fade\"\nrecommended: 0.6";
 	ui_label = "Z difference end fade";
 > = 0.6;
@@ -101,6 +107,24 @@ uniform float DepthShrink < __UNIFORM_DRAG_FLOAT1
 		ui_label = "Depth shrink";
         ui_tooltip = "Higher values cause AO to become finer on distant objects\nrecommended: 0.65";
 > = 0.65;
+
+
+// DepthStartFade does not change much visually
+
+/*
+uniform float DepthStartFade < __UNIFORM_DRAG_FLOAT1
+		ui_min = 0.0; ui_max = 4000.0; ui_step = 1.0;
+		ui_label = "Depth start fade";
+        ui_tooltip = "Start fading AO at this Z value";
+> = 0.0;
+*/
+
+uniform int DepthEndFade < __UNIFORM_DRAG_FLOAT1
+		ui_min = 0; ui_max = 4000;
+		ui_label = "Depth end fade";
+        ui_tooltip = "AO completely fades at this Z value\nrecommended: 1000";
+> = 1000;
+
 
 #include "ReShade.fxh"
 
@@ -251,15 +275,13 @@ float3 MadCakeDiskAOPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) 
 	
 	int num_samples = clamp(NumSamples, 1, 64);
 	int sample_dist = clamp(SampleDistance, 1, 128);
-	float start_fade = clamp(StartFade, 0.0, 3.0);
-	float end_fade = clamp(EndFade, 0.0, 3.0);
 	float normal_bias = clamp(NormalBias, 0.0, 1.0);
 	
 	float occlusion = 0.0;
-	float fade_range = end_fade - start_fade;
+	float fade_range = EndFade - StartFade;
 	
 	float angle_jitter_minor = rand2D(texcoord);
-	float angle_jitter_major = rand2D(texcoord + float2(-1, 0)) * 3.1415 * 2.0 * 0;
+	float angle_jitter_major = rand2D(texcoord + float2(-1, 0)) * 3.1415 * 2.0;
 
 	[loop]
 	for (int i = 0; i < num_samples; i++)
@@ -272,8 +294,7 @@ float3 MadCakeDiskAOPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) 
 		ray /= 1.0 + position.z * lerp(0, 0.05, pow(DepthShrink,4));
 		float radius_coef = 1.0;
 		float radius_jitter = rand2D(texcoord + float2(i, 1));
-		radius_coef = max((i + radius_jitter) / num_samples, 0.001);
-		ray *= radius_coef;
+		ray *= lerp(max(0.001, ReduceRadiusJitter), 1.0, radius_jitter);
 		ray = ensure_1px_offset(ray);
 		float2 sample_coord = texcoord + ray;
 		float3 sampled_position = GetPosition(sample_coord);
@@ -283,13 +304,14 @@ float3 MadCakeDiskAOPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) 
 		ray_occlusion = pow (ray_occlusion, NormalPower);
 		ray_occlusion = (ray_occlusion - normal_bias) / (1.0 - normal_bias);
 		float zdiff = abs(v.z);
-		if (zdiff >= start_fade)
+		if (zdiff >= StartFade)
 		{
-			ray_occlusion *= saturate(1.0 - (zdiff - start_fade) / fade_range);
+			ray_occlusion *= saturate(1.0 - (zdiff - StartFade) / fade_range);
 		}
 		occlusion += ray_occlusion / num_samples;
 	}
-	occlusion = max(0.0, 1.0 - occlusion * Strength);
+	occlusion *= saturate(1.0 - (position.z / DepthEndFade));
+	occlusion = saturate(1.0 - occlusion * Strength);
 	return occlusion;
 }
 
