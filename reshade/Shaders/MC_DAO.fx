@@ -226,9 +226,11 @@ float3 BlurAOVerticalPass(float4 vpos : SV_Position, float2 texcoord : TexCoord)
 		return sum;
 	}
 	float3 color = tex2D(ReShade::BackBuffer, texcoord).rgb;
+	color = max(color, 0.0);	// suppress warning
 	color = pow(color, 1.0 / Gamma) * sum;
+	color = max(color, 0.0);	// suppress warning
 	color = pow(color, Gamma);
-	return  color;
+	return color;
 }
 
 float2 ensure_1px_offset(float2 ray)
@@ -243,7 +245,7 @@ float2 ensure_1px_offset(float2 ray)
 }
 
 float3 MadCakeDiskAOPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) : SV_Target
-{
+{	
 	float3 position = GetPosition(texcoord);
 	float3 normal = GetNormalFromDepth(texcoord);
 	
@@ -253,7 +255,7 @@ float3 MadCakeDiskAOPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) 
 	float end_fade = clamp(EndFade, 0.0, 3.0);
 	float normal_bias = clamp(NormalBias, 0.0, 1.0);
 	
-	float occlusion = 0;
+	float occlusion = 0.0;
 	float fade_range = end_fade - start_fade;
 	
 	float angle_jitter_minor = rand2D(texcoord);
@@ -277,9 +279,9 @@ float3 MadCakeDiskAOPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) 
 		float3 sampled_position = GetPosition(sample_coord);
 		float3 v = sampled_position - position;
 		float ray_occlusion = dot(normal, normalize(v));
+		ray_occlusion = max(ray_occlusion, 0.0);	// not just warning suppression, leave it be!
 		ray_occlusion = pow (ray_occlusion, NormalPower);
 		ray_occlusion = (ray_occlusion - normal_bias) / (1.0 - normal_bias);
-		ray_occlusion = max(0.0, ray_occlusion);
 		float zdiff = abs(v.z);
 		if (zdiff >= start_fade)
 		{
