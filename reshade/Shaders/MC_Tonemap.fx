@@ -67,7 +67,7 @@ uniform float Saturation < __UNIFORM_DRAG_FLOAT1
 uniform int LumaCoefs <
         ui_type = "combo";
         ui_label = "Luma coefficients for saturation calculation";
-        ui_items = "Equal (0.33,0.33,0.33)\0Rod cell (0.41,0.59,0)\0sRGB (0.2126, 0.7152, 0.0722)\0";
+        ui_items = "Equal (0.33,0.33,0.33)\0Rod cell (0.0,0.59,0.41)\0sRGB (0.2126, 0.7152, 0.0722)\0";
 > = 2;
 
 #include "ReShade.fxh"
@@ -83,7 +83,7 @@ float3 MadCakeToneMapPass(float4 vpos : SV_Position, float2 texcoord : TexCoord)
 			luma = float3(0.33, 0.33, 0.33);
 			break;
 		case 1:
-			luma = float3(0.41, 0.59, 0.0);
+			luma = float3(0.0, 0.59, 0.41);
 			break;
 		case 2:
 			luma = float3(0.2126, 0.7152, 0.0722);
