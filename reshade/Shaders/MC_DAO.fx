@@ -128,8 +128,8 @@ uniform int DepthEndFade < __UNIFORM_DRAG_FLOAT1
 
 #include "ReShade.fxh"
 
-texture2D AOTex	{ Width = BUFFER_WIDTH;   Height = BUFFER_HEIGHT;   Format = R16F; MipLevels = 1;};
-texture2D AOTex2	{ Width = BUFFER_WIDTH;   Height = BUFFER_HEIGHT;   Format = R16F; MipLevels = 1;};
+texture2D AOTex	{ Width = BUFFER_WIDTH;   Height = BUFFER_HEIGHT;   Format = R8; MipLevels = 1;};
+texture2D AOTex2	{ Width = BUFFER_WIDTH;   Height = BUFFER_HEIGHT;   Format = R8; MipLevels = 1;};
 
 sampler2D sAOTex { Texture = AOTex; };
 sampler2D sAOTex2 { Texture = AOTex2; };
@@ -250,10 +250,7 @@ float3 BlurAOVerticalPass(float4 vpos : SV_Position, float2 texcoord : TexCoord)
 		return sum;
 	}
 	float3 color = tex2D(ReShade::BackBuffer, texcoord).rgb;
-	color = max(color, 0.0);	// suppress warning
-	color = pow(color, 1.0 / Gamma) * sum;
-	color = max(color, 0.0);	// suppress warning
-	color = pow(color, Gamma);
+	color *= sum;
 	return color;
 }
 
@@ -281,7 +278,7 @@ float3 MadCakeDiskAOPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) 
 	float fade_range = EndFade - StartFade;
 	
 	float angle_jitter_minor = rand2D(texcoord);
-	float angle_jitter_major = rand2D(texcoord + float2(-1, 0)) * 3.1415 * 2.0;
+	float angle_jitter_major = rand2D(texcoord + float2(-1, 0)) * 3.1415 * 2.0 * 0.0;
 
 	[loop]
 	for (int i = 0; i < num_samples; i++)
@@ -294,7 +291,7 @@ float3 MadCakeDiskAOPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) 
 		ray /= 1.0 + position.z * lerp(0, 0.05, pow(DepthShrink,4));
 		float radius_coef = 1.0;
 		float radius_jitter = rand2D(texcoord + float2(i, 1));
-		ray *= lerp(max(0.001, ReduceRadiusJitter), 1.0, radius_jitter);
+		ray *= lerp(max(0.01,ReduceRadiusJitter), 1.0, radius_jitter);
 		ray = ensure_1px_offset(ray);
 		float2 sample_coord = texcoord + ray;
 		float3 sampled_position = GetPosition(sample_coord);
@@ -312,7 +309,7 @@ float3 MadCakeDiskAOPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) 
 	}
 	occlusion *= saturate(1.0 - (position.z / DepthEndFade));
 	occlusion = saturate(1.0 - occlusion * Strength);
-	return occlusion;
+	return pow(occlusion, Gamma);
 }
 
 technique MC_DAO
