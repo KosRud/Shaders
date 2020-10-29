@@ -72,8 +72,8 @@ uniform int DebugEnabled <
 
 uniform int Bilateral <
         ui_type = "combo";
-        ui_label = "Bilateral filter";
-        ui_items = "Don't use (cheaper, worse quality)\0Vertical first\0Horizontal first\0";
+        ui_label = "Fake bilateral filter";
+        ui_items = "Don't use (cheaper)\0Vertical first\0Horizontal first\0";
 > = 0;
 
 uniform int BlurRadius < __UNIFORM_SLIDER_INT1
@@ -182,9 +182,11 @@ float3 GetNormalFromDepth(float2 coords)
 	return normalize(normal);
 }
 
-float3 GetNormalFromTexture(float2 coords)
+float4 GetNormalFromTexture(float2 coords)
 {
-	return tex2D(sNormalTex, coords).rgb * 2.0 - float3(1,1,1);
+	float4 normal = tex2D(sNormalTex, coords);
+	normal.xyz = normal.xyz * 2.0 - float3(1,1,1);
+	return normal;
 }
 
 float rand2D(float2 uv){
@@ -200,62 +202,20 @@ float3 CalculateNormalsPass(float4 vpos : SV_Position, float2 texcoord : TexCoor
 	return GetNormalFromDepth(texcoord) * 0.5 + 0.5;
 }
 
-float3 BlurAOThirdPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) : SV_Target
-{
-	float range = clamp(BlurRadius, 1, 32);
-
-	float tmp = 1.0 / (range * range);
-	float gauss = 1.0;
-	float helper = exp(tmp * 0.5);
-	float helper2 = exp(tmp);
-	float sum = tex2D(sAOTex, texcoord).r;
-	float sumCoef = 1.0;
-	
-	float blurQuality = clamp(BlurQuality, 0.0, 1.0);
-	range *= 3.0 * blurQuality;
-	
-	float2 off = float2(BUFFER_PIXEL_SIZE.x, 0);
-	if (Bilateral == 2)
-	{
-		off = float2(0, BUFFER_PIXEL_SIZE.y);
-	}
-	
-	float3 normal;
-	if (Bilateral)
-	{
-		normal = GetNormalFromTexture(texcoord);
-	}
-	
-	[loop]
-	for(int k = 1; k < range; k++){
-		gauss = gauss / helper;
-		helper = helper * helper2;
-		if (Bilateral)
-		{
-			float3 normal1 = GetNormalFromDepth(texcoord + off * k);
-			float dot1 = max(0.0, dot(normal1, normal));
-			sum += tex2D(sAOTex, texcoord + off * k).r * gauss * dot1;
-			
-			float3 normal2 = GetNormalFromDepth(texcoord - off * k);
-			float dot2 = max(0.0, dot(normal2, normal));
-			sum += tex2D(sAOTex, texcoord - off * k).r * gauss * dot2;
-			
-			sumCoef += (dot1 + dot2) * gauss;
-		}
-		else
-		{
-			sum += tex2D(sAOTex, texcoord + off * k).r * gauss;
-			sum += tex2D(sAOTex, texcoord - off * k).r * gauss;
-			sumCoef += 2.0 * gauss;
-		}
-	}
-	
-	return sum / sumCoef;
-}
-
 float3 BlurAOFirstPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) : SV_Target
 {
+	int debugEnabled = clamp(DebugEnabled, 0, 2);
+	
+	[branch]
+	if (debugEnabled == 2)
+	{
+		return tex2D(sAOTex, texcoord).r;
+	}
+
+	float normal_bias = clamp(NormalBias, 0.0, 1.0);
+
 	float range = clamp(BlurRadius, 1, 32);
+	float fade_range = EndFade - StartFade;
 
 	float tmp = 1.0 / (range * range);
 	float gauss = 1.0;
@@ -268,38 +228,81 @@ float3 BlurAOFirstPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) : 
 	range *= 3.0 * blurQuality;
 	
 	float2 off = float2(BUFFER_PIXEL_SIZE.x, 0);
+	
+	float4 my_normal;
+	
+	[branch]
+	if (Bilateral)
+	{
+		my_normal = GetNormalFromTexture(texcoord);
+	}
+	
+	[branch]
 	if (Bilateral == 2)
 	{
 		off = float2(0, BUFFER_PIXEL_SIZE.y);
 	}
 	
-	float3 normal;
-	if (Bilateral)
+	float weights[32];
+	weights[0] = 1;
+	
+	[unroll]
+	for (int i = 1; i < 32; i++)
 	{
-		normal = GetNormalFromTexture(texcoord);
+		gauss = gauss / helper;
+		helper = helper * helper2;
+		weights[i] = gauss;
 	}
 	
 	[loop]
-	for(int k = 1; k < range; k++){
-		gauss = gauss / helper;
-		helper = helper * helper2;
+	for(int k = 1; k < range; k++)
+	{
+		float weight = weights[abs(k)];
+		
 		if (Bilateral)
 		{
-			float3 normal1 = GetNormalFromDepth(texcoord + off * k);
-			float dot1 = max(0.0, dot(normal1, normal));
-			sum += tex2D(sAOTex, texcoord + off * k).r * gauss * dot1;
-			
-			float3 normal2 = GetNormalFromDepth(texcoord - off * k);
-			float dot2 = max(0.0, dot(normal2, normal));
-			sum += tex2D(sAOTex, texcoord - off * k).r * gauss * dot2;
-			
-			sumCoef += (dot1 + dot2) * gauss;
+			float4 normal = GetNormalFromTexture(texcoord + off * k);
+			weight *= saturate((dot(my_normal.xyz, normal.xyz) - normal_bias) / (1.0 - normal_bias));
+			float zdiff = abs(my_normal.w - normal.w);
+			[flatten]
+			if (zdiff >= StartFade)
+			{
+				weight *= saturate(1.0 - (zdiff - StartFade) / fade_range);
+			}
+			weight *= abs(my_normal.z - normal.z);
+			sum += tex2D(sAOTex, texcoord + off * k).r * weight;
+			sumCoef += weight;
 		}
 		else
 		{
-			sum += tex2D(sAOTex, texcoord + off * k).r * gauss;
-			sum += tex2D(sAOTex, texcoord - off * k).r * gauss;
-			sumCoef += 2.0 * gauss;
+			sum += tex2D(sAOTex, texcoord + off * k).r * weight;
+			sumCoef += weight;
+		}
+	}
+	
+	[loop]
+	for(int k = 1; k < range; k++)
+	{
+		float weight = weights[abs(k)];
+		
+		[branch]
+		if (Bilateral)
+		{
+			float4 normal = GetNormalFromTexture(texcoord - off * k);
+			weight *= max(0.0, dot(my_normal.xyz, normal.xyz));
+			float zdiff = abs(my_normal.w - normal.w);
+			[flatten]
+			if (zdiff >= StartFade)
+			{
+				weight *= saturate(1.0 - (zdiff - StartFade) / fade_range);
+			}
+			sum += tex2D(sAOTex, texcoord - off * k).r * weight;
+			sumCoef += weight;
+		}
+		else
+		{
+			sum += tex2D(sAOTex, texcoord - off * k).r * weight;
+			sumCoef += weight;
 		}
 	}
 	
@@ -309,75 +312,121 @@ float3 BlurAOFirstPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) : 
 
 float3 BlurAOSecondPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) : SV_Target
 {
+	int debugEnabled = clamp(DebugEnabled, 0, 2);
+	
+	[branch]
+	if (debugEnabled == 2)
+	{
+		return tex2D(sAOTex2, texcoord).r;
+	}
+
+	float normal_bias = clamp(NormalBias, 0.0, 1.0);
+
 	float range = clamp(BlurRadius, 1, 32);
+	float fade_range = EndFade - StartFade;
 
 	float tmp = 1.0 / (range * range);
 	float gauss = 1.0;
 	float helper = exp(tmp * 0.5);
 	float helper2 = exp(tmp);
-	float sum = tex2D(sAOTex2, texcoord).r;
+	float sum = tex2D(sAOTex, texcoord).r;
 	float sumCoef = 1.0;
 	
 	float blurQuality = clamp(BlurQuality, 0.0, 1.0);
 	range *= 3.0 * blurQuality;
-
+	
 	float2 off = float2(0, BUFFER_PIXEL_SIZE.y);
+	
+	float4 my_normal;
+	[branch]
+	if (Bilateral)
+	{
+		my_normal = GetNormalFromTexture(texcoord);
+	}
+	
+	[branch]
 	if (Bilateral == 2)
 	{
 		off = float2(BUFFER_PIXEL_SIZE.x, 0);
 	}
 	
-	float3 normal;
-	if (Bilateral)
+	float weights[32];
+	weights[0] = 1;
+	
+	[unroll]
+	for (int i = 1; i < 32; i++)
 	{
-		normal = GetNormalFromTexture(texcoord);
+		gauss = gauss / helper;
+		helper = helper * helper2;
+		weights[i] = gauss;
 	}
 	
 	[loop]
 	for(int k = 1; k < range; k++)
 	{
-		gauss = gauss / helper;
-		helper = helper * helper2;
+		float weight = weights[abs(k)];
+		
 		if (Bilateral)
 		{
-			float3 normal1 = GetNormalFromDepth(texcoord + off * k);
-			float dot1 = max(0.0, dot(normal1, normal));
-			sum += tex2D(sAOTex2, texcoord + off * k).r * gauss * dot1;
-			
-			float3 normal2 = GetNormalFromDepth(texcoord - off * k);
-			float dot2 = max(0.0, dot(normal2, normal));
-			sum += tex2D(sAOTex2, texcoord - off * k).r * gauss * dot2;
-			
-			sumCoef += (dot1 + dot2) * gauss;
+			float4 normal = GetNormalFromTexture(texcoord + off * k);
+			weight *= max(0.0, dot(my_normal.xyz, normal.xyz));
+			float zdiff = abs(my_normal.w - normal.w);
+			[flatten]
+			if (zdiff >= StartFade)
+			{
+				weight *= saturate(1.0 - (zdiff - StartFade) / fade_range);
+			}
+			sum += tex2D(sAOTex2, texcoord + off * k).r * weight;
+			sumCoef += weight;
 		}
 		else
 		{
-			sum += tex2D(sAOTex2, texcoord + off * k).r * gauss;
-			sum += tex2D(sAOTex2, texcoord - off * k).r * gauss;
-			sumCoef += 2.0 * gauss;
+			sum += tex2D(sAOTex2, texcoord + off * k).r * weight;
+			sumCoef += weight;
 		}
 	}
 	
-	sum = sum / sumCoef;
-	
-	if (DebugEnabled == 2)
+	[loop]
+	for(int k = 1; k < range; k++)
 	{
-		return tex2D(sAOTex, texcoord).r;
+		float weight = weights[abs(k)];
+		
+		if (Bilateral)
+		{
+			float4 normal = GetNormalFromTexture(texcoord - off * k);
+			weight *= saturate((dot(my_normal.xyz, normal.xyz) - normal_bias) / (1.0 - normal_bias));
+			float zdiff = abs(my_normal.w - normal.w);
+			if (zdiff >= StartFade)
+			{
+				weight *= saturate(1.0 - (zdiff - StartFade) / fade_range);
+			}
+			sum += tex2D(sAOTex2, texcoord - off * k).r * weight;
+			sumCoef += weight;
+		}
+		else
+		{
+			sum += tex2D(sAOTex2, texcoord - off * k).r * weight;
+			sumCoef += weight;
+		}
 	}
 	
-	if (DebugEnabled == 1)
+	[branch]
+	if (debugEnabled)
 	{
-		return sum;
+		return sum / sumCoef;
 	}
-	float3 color = tex2D(ReShade::BackBuffer, texcoord).rgb;
-	color *= sum;
-	return color;
+	else
+	{
+		float3 color = tex2D(ReShade::BackBuffer, texcoord).rgb;
+		return color * sum / sumCoef;
+	}
 }
 
 float2 ensure_1px_offset(float2 ray)
 {
 	float2 ray_in_pixels = ray / BUFFER_PIXEL_SIZE;
 	float coef = max(abs(ray_in_pixels.x), abs(ray_in_pixels.y));
+	[flatten]
 	if (coef < 1.0)
 	{
 		ray /= coef;
@@ -466,8 +515,9 @@ void SSAOPass(in float4 vpos : SV_Position, in float2 texcoord : TexCoord, out f
 			float ray_occlusion = dot(normal.xyz, normalize(v));
 			ray_occlusion = max(ray_occlusion, 0.0);	// not just warning suppression, leave it be!
 			ray_occlusion = pow (ray_occlusion, NormalPower);
-			ray_occlusion = (ray_occlusion - normal_bias) / (1.0 - normal_bias);
+			ray_occlusion = saturate((ray_occlusion - normal_bias) / (1.0 - normal_bias));
 			float zdiff = abs(v.z);
+			[flatten]
 			if (zdiff >= StartFade)
 			{
 				ray_occlusion *= saturate(1.0 - (zdiff - StartFade) / fade_range);
@@ -483,7 +533,10 @@ void SSAOPass(in float4 vpos : SV_Position, in float2 texcoord : TexCoord, out f
 	occlusion /=  num_angle_samples * 2.0;
 	occlusion *= saturate(1.0 - (position.z / DepthEndFade));
 	occlusion = saturate(1.0 - occlusion * Strength);
-	//occlusion = pow(1.0 - occlusion, Gamma);
+	occlusion = pow(occlusion, Gamma);
+	
+	normal = normal * 0.5 + 0.5;
+	normal.z = position.z;
 }
 
 technique MC_DAO
