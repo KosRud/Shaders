@@ -3,6 +3,7 @@
  	
 		based on HBAO (Horizon Based Ambient Occlusion)
 		https://developer.download.nvidia.com/presentations/2008/SIGGRAPH/HBAO_SIG08b.pdf
+		https://developer.nvidia.com/sites/default/files/akamai/gameworks/samples/DeinterleavedTexturing.pdf
 
 	License: https://creativecommons.org/licenses/by/4.0/
 	CC BY 4.0
@@ -132,12 +133,21 @@ uniform int DepthEndFade < __UNIFORM_DRAG_FLOAT1
 
 #include "ReShade.fxh"
 
+texture2D InterleavedAOTex  { Width = BUFFER_WIDTH / 2;   Height = BUFFER_HEIGHT / 2;   Format = R8; MipLevels = 1;};
+texture2D InterleavedAOTex2 { Width = BUFFER_WIDTH / 2;   Height = BUFFER_HEIGHT / 2;   Format = R8; MipLevels = 1;};
+texture2D InterleavedAOTex3 { Width = BUFFER_WIDTH / 2;   Height = BUFFER_HEIGHT / 2;   Format = R8; MipLevels = 1;};
+texture2D InterleavedAOTex4 { Width = BUFFER_WIDTH / 2;   Height = BUFFER_HEIGHT / 2;   Format = R8; MipLevels = 1;};
+
 texture2D AOTex	{ Width = BUFFER_WIDTH;   Height = BUFFER_HEIGHT;   Format = R8; MipLevels = 1;};
 texture2D AOTex2	{ Width = BUFFER_WIDTH;   Height = BUFFER_HEIGHT;   Format = R8; MipLevels = 1;};
 texture2D NormalTex	{ Width = BUFFER_WIDTH;   Height = BUFFER_HEIGHT;   Format = RGBA8; MipLevels = 1;};
 
 sampler2D sAOTex { Texture = AOTex; };
 sampler2D sAOTex2 { Texture = AOTex2; };
+sampler2D sInterleavedAOTex { Texture = InterleavedAOTex; };
+sampler2D sInterleavedAOTex2 { Texture = InterleavedAOTex2; };
+sampler2D sInterleavedAOTex3 { Texture = InterleavedAOTex3; };
+sampler2D sInterleavedAOTex4 { Texture = InterleavedAOTex4; };
 sampler2D sNormalTex { Texture = NormalTex; };
 
 float GetTrueDepth(float2 coords)
@@ -161,7 +171,7 @@ float3 GetPosition(float2 coords)
 	return pos;
 }
 
-float3 GetNormalFromDepth(float2 coords) 
+float4 GetNormalFromDepth(float2 coords) 
 {
 	float3 centerPos = GetPosition(coords);
 	
@@ -177,9 +187,11 @@ float3 GetNormalFromDepth(float2 coords)
 	ddx1 = ddx1 + ddx2;
 	ddy1 = ddy1 + ddy2;
 
-	float3 normal = cross(ddx1, ddy1);
+	float4 normal;
+	normal.xyz = normalize(cross(ddx1, ddy1));
+	normal.w = centerPos.z;
 	
-	return normalize(normal);
+	return normal;
 }
 
 float4 GetNormalFromTexture(float2 coords)
@@ -189,17 +201,19 @@ float4 GetNormalFromTexture(float2 coords)
 	return normal;
 }
 
+float4 DepthNormalsPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) : SV_Target
+{
+	float4 normal = GetNormalFromDepth(texcoord);
+	normal.xyz = normal.xyz * 0.5 + 0.5;
+	return normal;
+}
+
 float rand2D(float2 uv){
 	uv = frac(uv);
 	float x = frac(cos(uv.x*64)*256);
 	float y = frac(cos(uv.y*137)*241);
 	float z = x+y;
 	return frac(cos((z)*107)*269);
-}
-
-float3 CalculateNormalsPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) : SV_Target
-{
-	return GetNormalFromDepth(texcoord) * 0.5 + 0.5;
 }
 
 float3 BlurAOFirstPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) : SV_Target
@@ -417,7 +431,7 @@ float3 BlurAOSecondPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) :
 	}
 	else
 	{
-		float3 color = tex2D(ReShade::BackBuffer, texcoord).rgb;
+			float3 color = tex2D(ReShade::BackBuffer, texcoord).rgb;
 		return color * sum / sumCoef;
 	}
 }
@@ -434,10 +448,32 @@ float2 ensure_1px_offset(float2 ray)
 	return ray;
 }
 
-void SSAOPass(in float4 vpos : SV_Position, in float2 texcoord : TexCoord, out float occlusion : SV_Target0, out float4 normal : SV_Target1)
-{	
+float3 MergeAOPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) : SV_Target
+{
+	uint2 texcoord_px = texcoord / BUFFER_PIXEL_SIZE;
+	
+	/*
+	if (texcoord_px.x % 2 && texcoord_px.y % 2)
+		return 0;
+	if (texcoord_px.x % 2)
+		return float3(1,0,0);
+	if (texcoord_px.y % 2)
+		return float3(0,1,0);
+	return float3(0,0,1);*/
+	
+	if (texcoord_px.x % 2 && texcoord_px.y % 2)
+		return tex2D(sInterleavedAOTex4, texcoord).r;
+	if (texcoord_px.x % 2)
+		return tex2D(sInterleavedAOTex2, texcoord).r;
+	if (texcoord_px.y % 2)
+		return tex2D(sInterleavedAOTex3, texcoord).r;
+	return tex2D(sInterleavedAOTex, texcoord).r;
+}
+
+float GetOcclusion(float2 texcoord, float angle_jitter)
+{
 	float3 position = GetPosition(texcoord);
-	normal = GetNormalFromDepth(texcoord);
+	float3 normal = GetNormalFromTexture(texcoord).xyz;
 	
 	int quality = clamp(Quality, 0, 7);
 	
@@ -484,15 +520,13 @@ void SSAOPass(in float4 vpos : SV_Position, in float2 texcoord : TexCoord, out f
 	int sample_dist = clamp(SampleDistance, 1, 128);
 	float normal_bias = clamp(NormalBias, 0.0, 1.0);
 	
-	occlusion = 0.0;
+	float occlusion = 0.0;
 	float fade_range = EndFade - StartFade;
-	
-	float angle_jitter = rand2D(texcoord) * 3.1415 * 2.0;
 
 	[loop]
 	for (int i = 0; i < num_angle_samples; i++)
 	{
-		float angle = 3.1415 * 2.0 / num_angle_samples * i + angle_jitter;
+		float angle = 3.1415 * 2.0 / num_angle_samples * (i + angle_jitter);
 		
 		float2 ray;
 		ray.x = sin(angle);
@@ -505,7 +539,7 @@ void SSAOPass(in float4 vpos : SV_Position, in float2 texcoord : TexCoord, out f
 		[loop]
 		for (int k = 0; k < num_distance_samples; k++)
 		{
-			float radius_jitter = rand2D(texcoord + float2(i, 1));
+			float radius_jitter = rand2D(texcoord + float2(i, 0));
 			float radius_coef = (k + 1.0 - radius_jitter) / num_distance_samples;
 			radius_coef = max(radius_coef, 0.01);
 			float2 scaled_ray = ensure_1px_offset(ray * radius_coef);
@@ -535,8 +569,16 @@ void SSAOPass(in float4 vpos : SV_Position, in float2 texcoord : TexCoord, out f
 	occlusion = saturate(1.0 - occlusion * Strength);
 	occlusion = pow(occlusion, Gamma);
 	
-	normal = normal * 0.5 + 0.5;
-	normal.z = position.z;
+	return occlusion;
+}
+
+void SSAOPass(float4 vpos : SV_Position, in float2 texcoord : TexCoord,
+				out float occlusion_1 : SV_Target0, out float occlusion_2 : SV_Target1, out float occlusion_3 : SV_Target2, out float occlusion_4 : SV_Target3)
+{
+	occlusion_1 = GetOcclusion(texcoord + float2(-0.25,  0.25) * BUFFER_PIXEL_SIZE,  0.00);
+	occlusion_2 = GetOcclusion(texcoord + float2( 0.25,  0.25) * BUFFER_PIXEL_SIZE,  0.25);
+	occlusion_3 = GetOcclusion(texcoord + float2(-0.25, -0.25) * BUFFER_PIXEL_SIZE,  0.50);
+	occlusion_4 = GetOcclusion(texcoord + float2( 0.25, -0.25) * BUFFER_PIXEL_SIZE,  0.75);
 }
 
 technique MC_DAO
@@ -544,9 +586,23 @@ technique MC_DAO
 	pass
 	{
 		VertexShader = PostProcessVS;
+		PixelShader = DepthNormalsPass;
+		RenderTarget0 = NormalTex;
+	}
+	pass
+	{
+		VertexShader = PostProcessVS;
 		PixelShader = SSAOPass;
+		RenderTarget0 = InterleavedAOTex;
+		RenderTarget1 = InterleavedAOTex2;
+		RenderTarget2 = InterleavedAOTex3;
+		RenderTarget3 = InterleavedAOTex4;
+	}
+	pass 
+	{
+		VertexShader = PostProcessVS;
+		PixelShader = MergeAOPass;
 		RenderTarget0 = AOTex;
-		RenderTarget1 = NormalTex;
 	}
 	pass
 	{
@@ -558,11 +614,5 @@ technique MC_DAO
 	{
 		VertexShader = PostProcessVS;
 		PixelShader = BlurAOSecondPass;
-		//RenderTarget0 = AOTex;
-	}/*
-	pass
-	{
-		VertexShader = PostProcessVS;
-		PixelShader = BlurAOThirdPass;
-	}*/
+	}
 }
