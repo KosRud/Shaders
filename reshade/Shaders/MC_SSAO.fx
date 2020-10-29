@@ -79,9 +79,9 @@ uniform int Bilateral <
 
 uniform int BlurRadius < __UNIFORM_SLIDER_INT1
 	ui_min = 1.0; ui_max = 32.0;
-	ui_tooltip = "Blur radius (in pixels)\nrecommended: 3 or 4";
+	ui_tooltip = "Blur radius (in pixels)\nrecommended: 3";
 	ui_label = "Blur radius";
-> = 4.0;
+> = 3.0;
 
 uniform float BlurQuality < __UNIFORM_DRAG_FLOAT1
 		ui_min = 0.5; ui_max = 1.0; ui_step = 0.1;
