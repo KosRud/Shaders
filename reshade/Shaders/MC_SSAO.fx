@@ -216,7 +216,7 @@ float rand2D(float2 uv){
 	return frac(cos((z)*107)*269);
 }
 
-float3 BlurAOFirstPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) : SV_Target
+float BlurAOFirstPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) : SV_Target
 {
 	int debugEnabled = clamp(DebugEnabled, 0, 2);
 	
