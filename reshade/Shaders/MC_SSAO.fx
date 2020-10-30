@@ -73,15 +73,15 @@ uniform int DebugEnabled <
 
 uniform int Bilateral <
         ui_type = "combo";
-        ui_label = "Fake bilateral filter";
-        ui_items = "Don't use (cheaper)\0Vertical first\0Horizontal first\0";
-> = 0;
+        ui_label = "Fake bilateral filter\nrecommended: \"Disabled\" for max performance, \"Horizontal first\" for better quality";
+        ui_items = "Disabled (cheaper, more blurry)\0Vertical first\0Horizontal first\0";
+> = 2;
 
 uniform int BlurRadius < __UNIFORM_SLIDER_INT1
 	ui_min = 1.0; ui_max = 32.0;
-	ui_tooltip = "Blur radius (in pixels)\nrecommended: 3";
+	ui_tooltip = "Blur radius (in pixels)\nrecommended: 4";
 	ui_label = "Blur radius";
-> = 3.0;
+> = 4.0;
 
 uniform float BlurQuality < __UNIFORM_DRAG_FLOAT1
 		ui_min = 0.5; ui_max = 1.0; ui_step = 0.1;
@@ -281,9 +281,9 @@ float BlurAOFirstPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) : S
 			[flatten]
 			if (zdiff >= StartFade)
 			{
-				weight *= saturate(1.0 - (zdiff - StartFade) / fade_range);
+				float fade = saturate(1.0 - (zdiff - StartFade) / fade_range);
+				weight *= fade * fade;
 			}
-			weight *= abs(my_normal.z - normal.z);
 			sum += tex2D(sAOTex, texcoord + off * k).r * weight;
 			sumCoef += weight;
 		}
@@ -308,7 +308,8 @@ float BlurAOFirstPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) : S
 			[flatten]
 			if (zdiff >= StartFade)
 			{
-				weight *= saturate(1.0 - (zdiff - StartFade) / fade_range);
+				float fade = saturate(1.0 - (zdiff - StartFade) / fade_range);
+				weight *= fade * fade;
 			}
 			sum += tex2D(sAOTex, texcoord - off * k).r * weight;
 			sumCoef += weight;
@@ -385,10 +386,12 @@ float3 BlurAOSecondPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) :
 			float4 normal = GetNormalFromTexture(texcoord + off * k);
 			weight *= max(0.0, dot(my_normal.xyz, normal.xyz));
 			float zdiff = abs(my_normal.w - normal.w);
+			zdiff *= zdiff;
 			[flatten]
 			if (zdiff >= StartFade)
 			{
-				weight *= saturate(1.0 - (zdiff - StartFade) / fade_range);
+				float fade = saturate(1.0 - (zdiff - StartFade) / fade_range);
+				weight *= fade * fade;
 			}
 			sum += tex2D(sAOTex2, texcoord + off * k).r * weight;
 			sumCoef += weight;
@@ -412,7 +415,8 @@ float3 BlurAOSecondPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) :
 			float zdiff = abs(my_normal.w - normal.w);
 			if (zdiff >= StartFade)
 			{
-				weight *= saturate(1.0 - (zdiff - StartFade) / fade_range);
+				float fade = saturate(1.0 - (zdiff - StartFade) / fade_range);
+				weight *= fade * fade;
 			}
 			sum += tex2D(sAOTex2, texcoord - off * k).r * weight;
 			sumCoef += weight;
@@ -554,7 +558,8 @@ float GetOcclusion(float2 texcoord, float angle_jitter)
 			[flatten]
 			if (zdiff >= StartFade)
 			{
-				ray_occlusion *= saturate(1.0 - (zdiff - StartFade) / fade_range);
+				float fade = saturate(1.0 - (zdiff - StartFade) / fade_range);
+				ray_occlusion *= fade * fade;
 			}
 
 			float fade_coef = float(num_distance_samples - k) / num_distance_samples;
