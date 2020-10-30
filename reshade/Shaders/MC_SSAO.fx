@@ -32,7 +32,7 @@ uniform float Strength < __UNIFORM_DRAG_FLOAT1
 	ui_min = 0.0; ui_max = 16.0; ui_step = 0.1;
 	ui_tooltip = "Strength of the effect (recommended 1.0 to 2.0)";
 	ui_label = "Strength";
-> = 2.0;
+> = 1.4;
 
 uniform int SampleDistance < __UNIFORM_SLIDER_INT1
 	ui_min = 1; ui_max = 64;
@@ -79,9 +79,9 @@ uniform int Bilateral <
 
 uniform int BlurRadius < __UNIFORM_SLIDER_INT1
 	ui_min = 1.0; ui_max = 32.0;
-	ui_tooltip = "Blur radius (in pixels)\nrecommended: 4";
+	ui_tooltip = "Blur radius (in pixels)\nrecommended: 3 or 4";
 	ui_label = "Blur radius";
-> = 4.0;
+> = 3.0;
 
 uniform float BlurQuality < __UNIFORM_DRAG_FLOAT1
 		ui_min = 0.5; ui_max = 1.0; ui_step = 0.1;
@@ -227,6 +227,7 @@ float BlurAOFirstPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) : S
 	}
 
 	float normal_bias = clamp(NormalBias, 0.0, 1.0);
+	int bilateral = clamp(Bilateral, 0, 2);
 
 	float range = clamp(BlurRadius, 1, 32);
 	float fade_range = EndFade - StartFade;
@@ -246,7 +247,7 @@ float BlurAOFirstPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) : S
 	float4 my_normal;
 	
 	[branch]
-	if (Bilateral)
+	if (bilateral)
 	{
 		my_normal = GetNormalFromTexture(texcoord);
 	}
@@ -273,7 +274,8 @@ float BlurAOFirstPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) : S
 	{
 		float weight = weights[abs(k)];
 		
-		if (Bilateral)
+		[branch]
+		if (bilateral)
 		{
 			float4 normal = GetNormalFromTexture(texcoord + off * k);
 			float dotWeight = saturate((dot(my_normal.xyz, normal.xyz) - normal_bias) / (1.0 - normal_bias));
@@ -301,7 +303,7 @@ float BlurAOFirstPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) : S
 		float weight = weights[abs(k)];
 		
 		[branch]
-		if (Bilateral)
+		if (bilateral)
 		{
 			float4 normal = GetNormalFromTexture(texcoord - off * k);
 			float dotWeight = saturate((dot(my_normal.xyz, normal.xyz) - normal_bias) / (1.0 - normal_bias));
@@ -336,7 +338,8 @@ float3 BlurAOSecondPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) :
 	{
 		return tex2D(sAOTex2, texcoord).r;
 	}
-
+	
+	int bilateral = clamp(Bilateral, 0, 2);
 	float normal_bias = clamp(NormalBias, 0.0, 1.0);
 
 	float range = clamp(BlurRadius, 1, 32);
@@ -356,7 +359,7 @@ float3 BlurAOSecondPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) :
 	
 	float4 my_normal;
 	[branch]
-	if (Bilateral)
+	if (bilateral)
 	{
 		my_normal = GetNormalFromTexture(texcoord);
 	}
@@ -383,7 +386,8 @@ float3 BlurAOSecondPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) :
 	{
 		float weight = weights[abs(k)];
 		
-		if (Bilateral)
+		[branch]
+		if (bilateral)
 		{
 			float4 normal = GetNormalFromTexture(texcoord + off * k);
 			weight *= max(0.0, dot(my_normal.xyz, normal.xyz));
@@ -410,7 +414,8 @@ float3 BlurAOSecondPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) :
 	{
 		float weight = weights[abs(k)];
 		
-		if (Bilateral)
+		[branch]
+		if (bilateral)
 		{
 			float4 normal = GetNormalFromTexture(texcoord - off * k);
 			weight *= saturate((dot(my_normal.xyz, normal.xyz) - normal_bias) / (1.0 - normal_bias));
