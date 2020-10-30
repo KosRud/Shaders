@@ -276,7 +276,8 @@ float BlurAOFirstPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) : S
 		if (Bilateral)
 		{
 			float4 normal = GetNormalFromTexture(texcoord + off * k);
-			weight *= saturate((dot(my_normal.xyz, normal.xyz) - normal_bias) / (1.0 - normal_bias));
+			float dotWeight = saturate((dot(my_normal.xyz, normal.xyz) - normal_bias) / (1.0 - normal_bias));
+			normal *= pow(dotWeight, NormalPower);
 			float zdiff = abs(my_normal.w - normal.w);
 			[flatten]
 			if (zdiff >= StartFade)
@@ -303,7 +304,8 @@ float BlurAOFirstPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) : S
 		if (Bilateral)
 		{
 			float4 normal = GetNormalFromTexture(texcoord - off * k);
-			weight *= max(0.0, dot(my_normal.xyz, normal.xyz));
+			float dotWeight = saturate((dot(my_normal.xyz, normal.xyz) - normal_bias) / (1.0 - normal_bias));
+			normal *= pow(dotWeight, NormalPower);
 			float zdiff = abs(my_normal.w - normal.w);
 			[flatten]
 			if (zdiff >= StartFade)
