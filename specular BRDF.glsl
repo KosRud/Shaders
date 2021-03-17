@@ -58,7 +58,7 @@ void main()
   
   int specular_only = 1;  // disable to view diffuse + specular
   
-  if (specular_only != 0) // 
+  if (specular_only != 0)
   {
     color = spec;
   }
