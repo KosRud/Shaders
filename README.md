@@ -1,4 +1,4 @@
-### specular BRDF.glsl
+## specular BRDF.glsl
 
 Custom specular BRDF with a long highlight tail. Copy the code into https://shdr.bkcore.com for interactive demonstration.
 
