@@ -4,5 +4,10 @@ Custom specular BRDF with a long highlight tail. Copy the code into https://shdr
 
 Toggle variables:
 
-https://github.com/ConstantineRudenko/Shaders/blob/master/specular%20BRDF.glsl#L37
-https://github.com/ConstantineRudenko/Shaders/blob/master/specular%20BRDF.glsl#L59
+```
+int GGX = 0;  // toggle for comparison
+
+...
+
+int specular_only = 1;  // disable to view diffuse + specular
+```
