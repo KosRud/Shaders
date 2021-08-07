@@ -23,7 +23,7 @@ void main()
   
   lambert = mix(lambert, 1.0, 0.13);
   
-  vec3 diff = vec3(0.2,0.4,0.8)*lambert;
+  vec3 diff = vec3(0.08,0.1,0.2)*lambert;
   diff *= 0.5; // integrate(cos(x), x, -pi/2, pi/2) == 2
 
   // spec integral from -pi/2 to pi/2:
@@ -56,12 +56,14 @@ void main()
   vec3 color = mix(diff, spec, schlick);
   color *= 2.5; // brighten
   
-  int specular_only = 1;  // disable to view diffuse + specular
+  int specular_only = 0;  // disable to view diffuse + specular
   
   if (specular_only != 0)
   {
-    color = spec;
+    color = spec*schlick*4.0;
   }
+  
+  color *= 4.0;
   
   gl_FragColor = vec4(color, 1.0);
 }
