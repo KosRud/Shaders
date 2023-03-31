@@ -36,26 +36,26 @@ uniform float Strength < __UNIFORM_DRAG_FLOAT1
 
 uniform int SampleDistance < __UNIFORM_SLIDER_INT1
 	ui_min = 1; ui_max = 64;
-	ui_tooltip = "Sampling disk radius (in pixels)\nrecommended: 32";
+	ui_tooltip = "Sampling disk radius (in pixels)";
 	ui_label = "Sampling disk radius";
 > = 32.0;
 
 uniform int Quality <
 	ui_type = "combo";
 	ui_label = "Total number of samples";
-	ui_tooltip = "Higher numbers yield better quality at the cost of performance\nrecommended: 8";
+	ui_tooltip = "Higher numbers yield better quality at the cost of performance";
 	ui_items = "Samples: 4\0Samples: 8\0Samples: 16\0Samples: 24\0Samples: 32\0Samples: 36\0Samples: 48\0Samples: 64\0";
 > = 1;
 
 uniform float StartFade < __UNIFORM_DRAG_FLOAT1
 	ui_min = 0.0; ui_max = 300.0; ui_step = 0.1;
-	ui_tooltip = "AO starts fading when Z difference is greater than this\nmust be bigger than \"Z difference end fade\"\nrecommended: 0.4";
+	ui_tooltip = "AO starts fading when Z difference is greater than this,\nmust be smaller than \"Z difference end fade\"";
 	ui_label = "Z difference start fade";
 > = 0.4;
 
 uniform float EndFade < __UNIFORM_DRAG_FLOAT1
 	ui_min = 0.0; ui_max = 300.0; ui_step = 0.1;
-	ui_tooltip = "AO completely fades when Z difference is greater than this\nmust be bigger than \"Z difference start fade\"\nrecommended: 0.6";
+	ui_tooltip = "AO completely fades when Z difference is greater than this,\nmust be bigger than \"Z difference start fade\"";
 	ui_label = "Z difference end fade";
 > = 0.6;
 
@@ -73,13 +73,13 @@ uniform int DebugEnabled <
 
 uniform int Bilateral <
         ui_type = "combo";
-        ui_label = "Fake bilateral filter\nrecommended: \"Disabled\" for max performance, \"Horizontal first\" for better quality";
+        ui_label = "Fake bilateral filter";
         ui_items = "Disabled (cheaper, more blurry)\0Vertical first\0Horizontal first\0";
 > = 2;
 
 uniform int BlurRadius < __UNIFORM_SLIDER_INT1
 	ui_min = 1.0; ui_max = 32.0;
-	ui_tooltip = "Blur radius (in pixels)\nrecommended: 3 or 4";
+	ui_tooltip = "Blur radius (in pixels)";
 	ui_label = "Blur radius";
 > = 3.0;
 
@@ -92,13 +92,12 @@ uniform float BlurQuality < __UNIFORM_DRAG_FLOAT1
 uniform float Gamma < __UNIFORM_DRAG_FLOAT1
 		ui_min = 1.0; ui_max = 4.0; ui_step = 0.1;
 		ui_label = "Gamma";
-        ui_tooltip = "Recommended 2.2\n(assuming the texture is stored with gamma applied)";
 > = 2.2;
 
 uniform float NormalPower < __UNIFORM_DRAG_FLOAT1
 		ui_min = 0.5; ui_max = 8.0; ui_step = 0.1;
 		ui_label = "Normal power";
-        ui_tooltip = "Acts like softer version of normal bias without a threshold\nrecommended: 1.4";
+        ui_tooltip = "Acts like softer version of normal bias without a threshold";
 > = 1.4;
 
 uniform int FOV < __UNIFORM_DRAG_FLOAT1
@@ -110,7 +109,7 @@ uniform int FOV < __UNIFORM_DRAG_FLOAT1
 uniform float DepthShrink < __UNIFORM_DRAG_FLOAT1
 		ui_min = 0.0; ui_max = 1.0; ui_step = 0.05;
 		ui_label = "Depth shrink";
-        ui_tooltip = "Higher values cause AO to become finer on distant objects\nrecommended: 0.65";
+        ui_tooltip = "Higher values cause AO to become finer on distant objects";
 > = 0.65;
 
 
@@ -124,10 +123,10 @@ uniform float DepthStartFade < __UNIFORM_DRAG_FLOAT1
 > = 0.0;
 */
 
-uniform int DepthEndFade < __UNIFORM_DRAG_FLOAT1
-		ui_min = 0; ui_max = 4000;
+uniform float DepthEndFade < __UNIFORM_DRAG_FLOAT1
+		ui_min = 0.0; ui_max = 1.0; ui_step = 0.001;
 		ui_label = "Depth end fade";
-        ui_tooltip = "AO completely fades at this Z value\nrecommended: 1000";
+        ui_tooltip = "AO completely fades at this Z value";
 > = 1000;
 
 
@@ -577,9 +576,10 @@ float GetOcclusion(float2 texcoord, float angle_jitter)
 		occlusion += angle_occlusion;
 	}
 	occlusion /=  num_angle_samples * 2.0;
-	occlusion *= saturate(1.0 - (position.z / DepthEndFade));
+	occlusion *= saturate(1.0 - (position.z / DepthEndFade / RESHADE_DEPTH_LINEARIZATION_FAR_PLANE));
 	occlusion = saturate(1.0 - occlusion * Strength);
 	occlusion = pow(occlusion, Gamma);
+	
 	
 	return occlusion;
 }
